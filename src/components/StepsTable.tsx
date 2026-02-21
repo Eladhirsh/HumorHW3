@@ -160,7 +160,12 @@ export default function StepsTable({
           {steps.length} step{steps.length !== 1 ? "s" : ""} configured
         </p>
         <button
-          onClick={() => { setAdding(true); setEditing(null); }}
+          onClick={() => {
+            const maxOrder = steps.reduce((max, s) => Math.max(max, s.order_by ?? 0), 0);
+            setNewData({ ...EMPTY_STEP, humor_flavor_id: flavorId, order_by: maxOrder + 1 });
+            setAdding(true);
+            setEditing(null);
+          }}
           className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg transition-colors"
         >
           + Add Step
