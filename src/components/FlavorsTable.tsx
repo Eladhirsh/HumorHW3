@@ -21,6 +21,8 @@ export default function FlavorsTable({ flavors }: { flavors: Flavor[] }) {
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newData, setNewData] = useState({ description: "", slug: "" });
+  const [duplicating, setDuplicating] = useState<Flavor | null>(null);
+  const [dupSlug, setDupSlug] = useState("");
 
   const filtered = flavors.filter((f) => {
     const q = search.toLowerCase();
@@ -85,6 +87,82 @@ export default function FlavorsTable({ flavors }: { flavors: Flavor[] }) {
     }
   };
 
+  const startDuplicate = (flavor: Flavor) => {
+    setDuplicating(flavor);
+    setDupSlug(flavor.slug ? flavor.slug + "-copy" : "");
+  };
+
+  const confirmDuplicate = async () => {
+    if (!duplicating) return;
+    if (!dupSlug.trim()) {
+      alert("Slug is required.");
+      return;
+    }
+    setSaving(true);
+    const supabase = createClient();
+
+    // Create the new flavor
+    const { data: newFlavor, error: insertError } = await supabase
+      .from("humor_flavors")
+      .insert({ description: duplicating.description, slug: dupSlug.trim() })
+      .select("id")
+      .single();
+
+    if (insertError || !newFlavor) {
+      setSaving(false);
+      alert("Failed to duplicate flavor: " + (insertError?.message ?? "unknown error"));
+      return;
+    }
+
+    // Fetch the original flavor's steps
+    const { data: originalSteps, error: stepsError } = await supabase
+      .from("humor_flavor_steps")
+      .select("order_by, humor_flavor_step_type_id, llm_model_id, llm_input_type_id, llm_output_type_id, llm_temperature, llm_system_prompt, llm_user_prompt, description")
+      .eq("humor_flavor_id", duplicating.id)
+      .order("order_by", { ascending: true });
+
+    if (stepsError) {
+      setSaving(false);
+      alert("Flavor created but failed to copy steps: " + stepsError.message);
+      setDuplicating(null);
+      router.refresh();
+      return;
+    }
+
+    // Insert copied steps for the new flavor
+    if (originalSteps && originalSteps.length > 0) {
+      const copiedSteps = originalSteps.map((s) => ({
+        humor_flavor_id: newFlavor.id,
+        order_by: s.order_by,
+        humor_flavor_step_type_id: s.humor_flavor_step_type_id,
+        llm_model_id: s.llm_model_id,
+        llm_input_type_id: s.llm_input_type_id,
+        llm_output_type_id: s.llm_output_type_id,
+        llm_temperature: s.llm_temperature,
+        llm_system_prompt: s.llm_system_prompt,
+        llm_user_prompt: s.llm_user_prompt,
+        description: s.description,
+      }));
+
+      const { error: copyError } = await supabase
+        .from("humor_flavor_steps")
+        .insert(copiedSteps);
+
+      if (copyError) {
+        setSaving(false);
+        alert("Flavor created but failed to copy some steps: " + copyError.message);
+        setDuplicating(null);
+        router.refresh();
+        return;
+      }
+    }
+
+    setSaving(false);
+    setDuplicating(null);
+    setDupSlug("");
+    router.refresh();
+  };
+
   return (
     <div>
       <div className="flex flex-wrap gap-3 mb-4">
@@ -142,6 +220,45 @@ export default function FlavorsTable({ flavors }: { flavors: Flavor[] }) {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {duplicating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-900 border border-amber-800 rounded-lg p-6 w-full max-w-md space-y-4">
+            <h4 className="text-sm font-medium text-amber-400">
+              Duplicate Flavor &ldquo;{duplicating.slug}&rdquo;
+            </h4>
+            <p className="text-xs text-gray-400">
+              This will create a new flavor with all {duplicating.step_count} step{duplicating.step_count !== 1 ? "s" : ""} copied.
+            </p>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">New Slug *</label>
+              <input
+                type="text"
+                value={dupSlug}
+                onChange={(e) => setDupSlug(e.target.value)}
+                placeholder="e.g. sarcastic-roast-v2"
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-500"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setDuplicating(null); setDupSlug(""); }}
+                className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDuplicate}
+                disabled={saving}
+                className="text-sm bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded disabled:opacity-50"
+              >
+                {saving ? "Duplicating..." : "Duplicate"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -232,6 +349,12 @@ export default function FlavorsTable({ flavors }: { flavors: Flavor[] }) {
                         >
                           Steps
                         </Link>
+                        <button
+                          onClick={() => startDuplicate(f)}
+                          className="text-xs text-amber-400 hover:text-amber-300"
+                        >
+                          Duplicate
+                        </button>
                         <button
                           onClick={() => startEdit(f)}
                           className="text-xs text-indigo-400 hover:text-indigo-300"
