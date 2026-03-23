@@ -13,6 +13,13 @@ interface Flavor {
   step_count: number;
 }
 
+async function getProfileId(): Promise<string> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  return user.id;
+}
+
 export default function FlavorsTable({ flavors }: { flavors: Flavor[] }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -43,9 +50,10 @@ export default function FlavorsTable({ flavors }: { flavors: Flavor[] }) {
     if (!editing) return;
     setSaving(true);
     const supabase = createClient();
+    const profileId = await getProfileId();
     const { error } = await supabase
       .from("humor_flavors")
-      .update({ description: editData.description, slug: editData.slug })
+      .update({ description: editData.description, slug: editData.slug, modified_by_user_id: profileId })
       .eq("id", editing);
     setSaving(false);
     if (error) {
@@ -74,9 +82,10 @@ export default function FlavorsTable({ flavors }: { flavors: Flavor[] }) {
     }
     setSaving(true);
     const supabase = createClient();
+    const profileId = await getProfileId();
     const { error } = await supabase
       .from("humor_flavors")
-      .insert({ description: newData.description || null, slug: newData.slug });
+      .insert({ description: newData.description || null, slug: newData.slug, created_by_user_id: profileId, modified_by_user_id: profileId });
     setSaving(false);
     if (error) {
       alert("Failed to add: " + error.message);
@@ -102,9 +111,10 @@ export default function FlavorsTable({ flavors }: { flavors: Flavor[] }) {
     const supabase = createClient();
 
     // Create the new flavor
+    const profileId = await getProfileId();
     const { data: newFlavor, error: insertError } = await supabase
       .from("humor_flavors")
-      .insert({ description: duplicating.description, slug: dupSlug.trim() })
+      .insert({ description: duplicating.description, slug: dupSlug.trim(), created_by_user_id: profileId, modified_by_user_id: profileId })
       .select("id")
       .single();
 
@@ -142,6 +152,8 @@ export default function FlavorsTable({ flavors }: { flavors: Flavor[] }) {
         llm_system_prompt: s.llm_system_prompt,
         llm_user_prompt: s.llm_user_prompt,
         description: s.description,
+        created_by_user_id: profileId,
+        modified_by_user_id: profileId,
       }));
 
       const { error: copyError } = await supabase

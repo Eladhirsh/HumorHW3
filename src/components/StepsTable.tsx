@@ -38,6 +38,13 @@ interface StepsTableProps {
 
 type EditableStep = Omit<Step, "id" | "created_datetime_utc">;
 
+async function getProfileId(): Promise<string> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  return user.id;
+}
+
 const EMPTY_STEP: EditableStep = {
   humor_flavor_id: 0,
   llm_temperature: null,
@@ -94,6 +101,7 @@ export default function StepsTable({
     if (!editing) return;
     setSaving(true);
     const supabase = createClient();
+    const profileId = await getProfileId();
     const { error } = await supabase
       .from("humor_flavor_steps")
       .update({
@@ -106,6 +114,7 @@ export default function StepsTable({
         llm_system_prompt: editData.llm_system_prompt,
         llm_user_prompt: editData.llm_user_prompt,
         description: editData.description,
+        modified_by_user_id: profileId,
       })
       .eq("id", editing);
     setSaving(false);
@@ -131,6 +140,7 @@ export default function StepsTable({
   const addStep = async () => {
     setSaving(true);
     const supabase = createClient();
+    const profileId = await getProfileId();
     const { error } = await supabase.from("humor_flavor_steps").insert({
       humor_flavor_id: flavorId,
       llm_temperature: newData.llm_temperature,
@@ -142,6 +152,8 @@ export default function StepsTable({
       llm_system_prompt: newData.llm_system_prompt || null,
       llm_user_prompt: newData.llm_user_prompt || null,
       description: newData.description || null,
+      created_by_user_id: profileId,
+      modified_by_user_id: profileId,
     });
     setSaving(false);
     if (error) {
